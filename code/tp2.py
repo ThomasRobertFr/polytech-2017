@@ -1,4 +1,7 @@
 import os
+import argparse
+from tqdm import tqdm
+
 import torch
 from torch.autograd import Variable
 from torch.utils import model_zoo
@@ -12,62 +15,23 @@ from sklearn.metrics import average_precision_score
 from sklearn.svm import LinearSVC
 from sklearn.svm import SVC
 
-from tqdm import tqdm
-
 from lib.voc import Voc2007Classification
 from lib.util import load_imagenet_classes
+from tp1 import model_urls
+from lib.vggm import VGGM
+models.__dict__['vggm'] = VGGM
 
-model_urls = {
-    # Alexnet
-    # Paper: https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf
-    # https://github.com/pytorch/vision/blob/master/torchvision/models/alexnet.py
-    'alexnet': 'https://download.pytorch.org/models/alexnet-owt-4df8aa71.pth',
-    # VGG
-    # Paper: https://arxiv.org/abs/1409.1556
-    # https://github.com/pytorch/vision/blob/master/torchvision/models/vgg.py
-    'vgg16': 'https://download.pytorch.org/models/vgg16-397923af.pth',
-    # VGG BatchNorm
-    # Paper: https://arxiv.org/abs/1502.03167
-    # https://github.com/pytorch/vision/blob/master/torchvision/models/vgg.py
-    'vgg16_bn': 'https://download.pytorch.org/models/vgg16_bn-6c64b313.pth',
-    # Inception
-    # Paper: https://arxiv.org/abs/1602.07261
-    # https://github.com/pytorch/vision/blob/master/torchvision/models/inception.py
-    'inception_v3': 'https://download.pytorch.org/models/inception_v3_google-1a9a5a14.pth',
-    # Resnet
-    # Paper: https://arxiv.org/abs/1512.03385
-    # https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
-    'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth'
-}
-
-print('Create network')
-model = models.alexnet()
-print('')
-
-print('Load pretrained model on Imagenet')
-model.load_state_dict(model_zoo.load_url(model_urls['alexnet'],
-                               model_dir='/tmp/torch/models'))
-
-tf = transforms.Compose([
-    transforms.Scale(224),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
-    )
-])
-print('')
-
-def extract_features_targets(split, batch_size, path_data, features_size=4096):
+def extract_features_targets(dir_datasets, split, batch_size, path_data, layer_id):
     if os.path.isfile(path_data):
         print('Load features from {}'.format(path_data))
         return torch.load(path_data)
 
     print('Extract features on {}set'.format(split))
 
-    data = Voc2007Classification('/tmp/torch/datasets', split, transform=tf)
+    data = Voc2007Classification(dir_datasets, split, transform=tf)
     loader = torch.utils.data.DataLoader(data, batch_size=batch_size, shuffle=False, num_workers=1)
+
+    features_size = model.classifier[layer_id].out_features
 
     features = torch.Tensor(len(data), features_size)
     targets = torch.Tensor(len(data), len(data.classes))
@@ -76,7 +40,7 @@ def extract_features_targets(split, batch_size, path_data, features_size=4096):
         nonlocal features, from_, to_ # https://stackoverflow.com/questions/11987358/why-nested-functions-can-access-variables-from-outer-functions-but-are-not-allo
         features[from_:to_] = output.data
 
-    handle = model.classifier[4].register_forward_hook(get_features)
+    handle = model.classifier[layer_id].register_forward_hook(get_features)
 
     for batch_id, batch in enumerate(tqdm(loader)):
         img = batch[0]
@@ -96,45 +60,49 @@ def extract_features_targets(split, batch_size, path_data, features_size=4096):
     print('')
     return features, targets
 
-features_size = 4096
-dir_data = '/tmp/output/data'
-path_train_data = '{}/{}set.pth'.format(dir_data, 'train')
-path_val_data = '{}/{}set.pth'.format(dir_data, 'val')
-path_test_data = '{}/{}set.pth'.format(dir_data, 'test')
-
-features = {}
-targets = {}
-features['train'], targets['train'] = extract_features_targets('train', 256, path_train_data, features_size=features_size)
-features['val'], targets['val'] = extract_features_targets('val', 256, path_val_data, features_size=features_size)
-features['test'], targets['test'] = extract_features_targets('test', 256, path_test_data, features_size=features_size)
-features['trainval'] = torch.cat([features['train'], features['val']], 0)
-targets['trainval'] = torch.cat([targets['train'], targets['val']], 0)
-
-print('')
-
-##########################################################################
-
-def train_multilabel(features, targets, split_train, split_test, C=1.0):
-    APs = {}
-    APs[split_train] = []
-    APs[split_test] = []
+def train_multilabel(features, targets, train_split, test_split, C=1.0, ignore_hard_examples=True, after_ReLU=True, normalize_L2=True):
+    print('Hyperparameters:\n - C: {}\n - after_ReLU: {}\n - normL2: {}'.format(C, after_ReLU, normalize_L2))
+    train_APs = []
+    test_APs = []
     for class_id in range(nb_classes):
         # http://scikit-learn.org/stable/modules/generated/sklearn.svm.SVC.html
         classifier = SVC(C=C, kernel='linear')
         
-        #train_X = torch.masked_select(train_features, (train_targets[:,class_id] == 1).view(-1,1).expand_as(train_features)).view(-1,features_size).numpy()
-        train_X = features[split_train].numpy()
-        train_y = (targets[split_train][:,class_id] != -1).numpy() # uses hard examples
+        if ignore_hard_examples:
+            train_masks = (targets[train_split][:,class_id] != 0).view(-1, 1)
+            train_features = torch.masked_select(features[train_split], train_masks.expand_as(features[train_split])).view(-1,features[train_split].size(1))
+            train_targets = torch.masked_select(targets[train_split], train_masks.expand_as(targets[train_split])).view(-1,targets[train_split].size(1))
+            test_masks = (targets[test_split][:,class_id] != 0).view(-1, 1)
+            test_features = torch.masked_select(features[test_split], test_masks.expand_as(features[test_split])).view(-1,features[test_split].size(1))
+            test_targets = torch.masked_select(targets[test_split], test_masks.expand_as(targets[test_split])).view(-1,targets[test_split].size(1))
+        else:
+            train_features = features[train_split]
+            train_targets = targets[train_split]
+            test_features = features[test_split]
+            test_targets = features[test_split]
 
-        test_X = features[split_test].numpy()
-        test_y = (targets[split_test][:,class_id] != -1).numpy()
+        if after_ReLU:
+            train_features[train_features < 0] = 0
+            test_features[test_features < 0] = 0
+
+        if normalize_L2:
+            train_norm = torch.norm(train_features, p=2, dim=1)
+            train_features = train_features.div(train_norm.unsqueeze(1).expand_as(train_features))
+            test_norm = torch.norm(test_features, p=2, dim=1)
+            test_features = test_features.div(test_norm.unsqueeze(1).expand_as(test_features))
+
+        train_X = train_features.numpy()
+        train_y = (train_targets[:,class_id] != -1).numpy() # uses hard examples if not ignored
+
+        test_X = test_features.numpy()
+        test_y = (test_targets[:,class_id] != -1).numpy()
 
         classifier.fit(train_X, train_y)
 
         train_preds = classifier.predict(train_X)
         train_acc = accuracy_score(train_y, train_preds) * 100
         train_AP = average_precision_score(train_y, train_preds) * 100
-        APs.append(train_AP)
+        train_APs.append(train_AP)
 
         test_preds = classifier.predict(test_X)
         test_acc = accuracy_score(test_y, test_preds) * 100
@@ -142,24 +110,109 @@ def train_multilabel(features, targets, split_train, split_test, C=1.0):
         test_APs.append(test_AP)
 
         print('class "{}" ({}/{}):'.format(dataset.classes[class_id], test_y.sum(), test_y.shape[0]))
-        print('  - {:7}: acc {:.2f}, AP {:.2f}'.format(split_train, train_acc, train_AP))
-        print('  - {:7}: acc {:.2f}, AP {:.2f}'.format(split_test, test_acc, test_AP))
+        print('  - {:8}: acc {:.2f}, AP {:.2f}'.format(train_split, train_acc, train_AP))
+        print('  - {:8}: acc {:.2f}, AP {:.2f}'.format(test_split, test_acc, test_AP))
 
     print('all classes:')
-    print('  - {:7}: mAP {:.4f}'.format(split_train, sum(APs)/nb_classes))
-    print('  - {:7}: mAP {:.4f}'.format(split_test, sum(test_APs)/nb_classes))
+    print('  - {:8}: mAP {:.4f}'.format(train_split, sum(train_APs)/nb_classes))
+    print('  - {:8}: mAP {:.4f}'.format(test_split, sum(test_APs)/nb_classes))
     print('')
 
-print('Hyperparameters search: train multilabel classifiers (on-versus-all) on train/val')
-
-dataset = Voc2007Classification('/tmp/torch/datasets', 'train')
-nb_classes = len(dataset.classes) # Voc2007
-C = 1.0
-
-train_multilabel(features, targets, 'train', 'val', C=C)
-
+##########################################################################
+# main
 ##########################################################################
 
-print('Evaluation: train a multilabel classifier on trainval/test')
+parser = argparse.ArgumentParser(
+    description='Train/Evaluate models',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--dir_outputs', default='/tmp/output', type=str, 
+                    help='')
+parser.add_argument('--dir_models', default='/tmp/torch/models', type=str, 
+                    help='')
+parser.add_argument('--dir_datasets', default='/tmp/torch/datasets', type=str, 
+                    help='')
+parser.add_argument('--C', default=1, type=float,
+                    help='')
 
-train_multilabel(features, targets, 'trainval', 'test', C=C)
+if __name__ == '__main__':
+    global args
+    args = parser.parse_args()
+
+    print('Create network')
+    model_name = 'vggm'
+    layer_id = 3
+    model = models.__dict__[model_name]()
+    model.eval()
+    print(model)
+    print('')
+
+    print('Load pretrained model on Imagenet')
+    model.load_state_dict(model_zoo.load_url(model_urls[model_name],
+                                   model_dir=args.dir_models))
+
+    class ToSpaceBGR(object):
+
+        def __init__(self, is_bgr):
+            self.is_bgr = is_bgr
+
+        def __call__(self, tensor):
+            if self.is_bgr:
+                new_tensor = tensor.clone()
+                new_tensor[0] = tensor[2]
+                new_tensor[2] = tensor[0]
+                tensor = new_tensor
+            return tensor
+
+    class ToRange255(object):
+
+        def __init__(self, is_255):
+            self.is_255 = is_255
+
+        def __call__(self, tensor):
+            if self.is_255:
+                tensor.mul_(255)
+            return tensor
+
+    tf = transforms.Compose([
+        transforms.Scale(224),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        ToSpaceBGR(True),
+        ToRange255(True),
+        transforms.Normalize(
+            mean=[123.68, 116.779, 103.939],#[0.485, 0.456, 0.406],
+            std=[1,1,1],#[0.229, 0.224, 0.225]
+        )
+    ])
+    print('')
+
+    dir_data = os.path.join(args.dir_outputs, 'data/{}_{}'.format(model_name, layer_id))
+    path_train_data = '{}/{}set.pth'.format(dir_data, 'train')
+    path_val_data = '{}/{}set.pth'.format(dir_data, 'val')
+    path_test_data = '{}/{}set.pth'.format(dir_data, 'test')
+
+    features = {}
+    targets = {}
+    batch_size = 100
+    features['train'], targets['train'] = extract_features_targets(args.dir_datasets, 'train', batch_size, path_train_data, layer_id)
+    features['val'], targets['val'] = extract_features_targets(args.dir_datasets, 'val', batch_size, path_val_data, layer_id)
+    features['test'], targets['test'] = extract_features_targets(args.dir_datasets, 'test', batch_size, path_test_data, layer_id)
+    features['trainval'] = torch.cat([features['train'], features['val']], 0)
+    targets['trainval'] = torch.cat([targets['train'], targets['val']], 0)
+
+    print('')
+
+    ##########################################################################
+
+    print('Hyperparameters search: train multilabel classifiers (on-versus-all) on train/val')
+
+    dataset = Voc2007Classification(args.dir_datasets, 'train')
+    nb_classes = len(dataset.classes) # Voc2007
+
+    #train_multilabel(features, targets, 'train', 'val', C=args.C)
+
+    ##########################################################################
+
+    print('Evaluation: train a multilabel classifier on trainval/test')
+
+    train_multilabel(features, targets, 'trainval', 'test', C=args.C)
