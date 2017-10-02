@@ -1,22 +1,21 @@
-import torch
 import os
+
+import torch # http://pytorch.org/about/
 from torch.autograd import Variable
 from torch.utils import model_zoo
+
+import torchvision # https://github.com/pytorch/vision
 import torchvision.models as models
 import torchvision.transforms as transforms
-import torchvision
+
 from lib.voc import Voc2007Classification
 from lib.util import load_imagenet_classes
-from lib.vggm import VGGM
-models.__dict__['vggm'] = VGGM
 
 model_urls = {
     # Alexnet
     # Paper: https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf
     # https://github.com/pytorch/vision/blob/master/torchvision/models/alexnet.py
     'alexnet': 'https://download.pytorch.org/models/alexnet-owt-4df8aa71.pth',
-    # VGGM
-    'vggm': 'http://webia.lip6.fr/~cadene/Downloads/pretrained-models.pytorch/vggm-5bdc9182.pth',
     # VGG
     # Paper: https://arxiv.org/abs/1409.1556
     # https://github.com/pytorch/vision/blob/master/torchvision/models/vgg.py
@@ -35,12 +34,16 @@ model_urls = {
     'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth'
 }
 
+dir_datasets = '/tmp/torch/datasets' # '/home/sasl/shared/EI-SE5-CS/datasets'
+dir_models = '/tmp/torch/models' # '/home/sasl/shared/EI-SE5-CS/models'
+dir_outputs = '/tmp/outputs'
+
 if __name__ == '__main__':
     
     print('Create network')
     model_name = 'alexnet'
-    model = models.__dict__[model_name]()
-    model.eval()
+    model = models.__dict__[model_name]() # https://stackoverflow.com/questions/19907442/python-explain-dict-attribute
+    model.eval() # http://pytorch.org/docs/master/nn.html?highlight=eval#torch.nn.Module.eval
     print('')
 
     ##########################################################################
@@ -52,7 +55,7 @@ if __name__ == '__main__':
     ##########################################################################
 
     print('Display parameters')
-    state_dict = model.state_dict()
+    state_dict = model.state_dict() # http://pytorch.org/docs/master/_modules/torch/nn/modules/module.html#Module.state_dict
     for key, value in state_dict.items():
         print(key, value.size())
     print('')
@@ -73,16 +76,16 @@ if __name__ == '__main__':
 
     handles = []
     for m in model.features:
-        handles.append(m.register_forward_hook(print_info))
+        handles.append(m.register_forward_hook(print_info)) # http://pytorch.org/docs/master/_modules/torch/nn/modules/module.html#Module.register_forward_pre_hook
         
     for m in model.classifier:
         handles.append(m.register_forward_hook(print_info))
 
-    input = Variable(torch.randn(1,3,224,224).float(), requires_grad=False)
-    output = model(input)
+    input = Variable(torch.randn(1,3,224,224).float(), requires_grad=False) # http://pytorch.org/tutorials/beginner/blitz/autograd_tutorial.html#sphx-glr-beginner-blitz-autograd-tutorial-py
+    output = model(input) # model(input) calls model.__call__(input) which calls model.forward(hook) and then calls the hooks
 
     for h in handles:
-        h.remove()
+        h.remove() # to remove the hooks
 
     print('')
 
@@ -90,24 +93,23 @@ if __name__ == '__main__':
 
     print('Load dataset Voc2007')
 
-    train_data = Voc2007Classification('/tmp/torch/datasets', 'train')
+    train_data = Voc2007Classification(dir_datasets, 'train') # or val, test, trainval
 
     print('Voc2007 trainset has {} images'.format(len(train_data)))
 
     print('Voc2007 has {} classes'.format(len(train_data.classes)))
     print(train_data.classes)
 
-    item = train_data[0]
+    item = train_data[0] # train_data contains a list of items (image, name, target)
     img_data = item[0] # PIL.Image.Image
-    img_name = item[1]
-    target = item[2]
+    img_name = item[1] # string
+    target = item[2] #  torch.Tensor of size=20 (=nb_classes), contains 3 values: -1 (absence of class), 1 (presence of class), 0 (hard example)
 
-    os.system('mkdir -p output')
-    path_img = 'output/'+img_name+'.png'
-    img_data.save(path_img)
-    os.system('open '+path_img)
+    os.system('mkdir -p ' + dir_outputs) # create a directory
+    path_img = os.path.join(dir_outputs, img_name+'.png')
+    img_data.save(path_img) # save image using PIL
 
-    print('Write image to '+path_img)
+    print('Write image to ' + path_img)
     for class_id, has_class in enumerate(target):
         if has_class == 1:
             print('image {} has object of class {}'.format(img_name, train_data.classes[class_id]))
@@ -115,48 +117,23 @@ if __name__ == '__main__':
     ##########################################################################
 
     print('Load pretrained model on Imagenet')
-
-    model.load_state_dict(model_zoo.load_url(model_urls['alexnet'],
-                                   model_dir='/tmp/torch/models'))
+    model.load_state_dict(model_zoo.load_url(model_urls[model_name],
+                                   model_dir=dir_models))
 
     print('Display predictions')
 
-    class ToSpaceBGR(object):
-
-        def __init__(self, is_bgr):
-            self.is_bgr = is_bgr
-
-        def __call__(self, tensor):
-            if self.is_bgr:
-                new_tensor = tensor.clone()
-                new_tensor[0] = tensor[2]
-                new_tensor[2] = tensor[0]
-                tensor = new_tensor
-            return tensor
-
-    class ToRange255(object):
-
-        def __init__(self, is_255):
-            self.is_255 = is_255
-
-        def __call__(self, tensor):
-            if self.is_255:
-                tensor.mul_(255)
-            return tensor
-
     tf = transforms.Compose([
-        transforms.Scale(224),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        ToSpaceBGR(True),
-        ToRange255(True),
+        transforms.Scale(224), # rescale an RGB image to size 224^ (not a square)
+        transforms.CenterCrop(224), # extract a square of size 224 at the center of the image
+        transforms.ToTensor(), # convert the PIL.Image into a torch.Tensor
         transforms.Normalize(
-            mean=[123.68, 116.779, 103.939],#[0.485, 0.456, 0.406],
-            std=[1,1,1],#[0.229, 0.224, 0.225]
+            mean=[0.485, 0.456, 0.406], # mean pixel value per channel
+            std=[0.229, 0.224, 0.225] # standard deviation value per channel
         )
     ])
 
-    input_data = tf(img_data).unsqueeze(0)
+    input_data = tf(img_data)
+    input_data = input_data.unsqueeze(0) # (3,224,224) -> (1,3,224,224)
     print('input size', input_data.size())
     print(input_data)
 
@@ -167,7 +144,6 @@ if __name__ == '__main__':
     print(output.data)
 
     # Load Imagenet Synsets
-
     imagenet_classes = load_imagenet_classes()
     print('Imagenet has {} classes'.format(imagenet_classes))
 
@@ -179,17 +155,18 @@ if __name__ == '__main__':
 
     print('Save normalized input as RGB image')
 
-    os.system('mkdir -p output/activation')
+    dir_activations = os.path.join(dir_outputs,'activations')
+    os.system('mkdir -p ' + dir_activations)
 
-    path_img_input = 'output/activation/input.png'
-    print('save input activation to '+path_img_input)
-    transforms.ToPILImage()(input_data[0]).save(path_img_input)
+    path_img_input = os.path.join(dir_activations, 'input.png')
+    print('save input activation to ' + path_img_input)
+    transforms.ToPILImage()(input_data[0]).save(path_img_input) # save image using PIL
 
     print('')
 
     #############################################################################
 
-    print('Save activations as Gray image')
+    print('Save activations as Gray images')
 
     layer_id = 0
 
@@ -197,9 +174,9 @@ if __name__ == '__main__':
         global layer_id
 
         for i in range(10):#output.data.size(1)):
-            path_img_output = 'output/activation/layer{}_{}_channel{}.png'.format(layer_id, self.__class__.__name__, i)
-            print('save output activation to '+path_img_output)
-            torchvision.utils.save_image(output.data.squeeze(0)[i], path_img_output)
+            path_img_output = os.path.join(dir_activations, 'layer{}_{}_channel{}.png'.format(layer_id, self.__class__.__name__, i))
+            print('save output activation to ' + path_img_output)
+            torchvision.utils.save_image(output.data.squeeze(0)[i], path_img_output) # save image (of type Tensor) using torchvision
 
         layer_id += 1
 
@@ -217,23 +194,29 @@ if __name__ == '__main__':
 
     #############################################################################
 
-    print('Save first layer parameters as RGB image')
-
-    os.system('mkdir -p output/parameters')
-
+    dir_parameters = os.path.join(dir_outputs, 'parameters')
+    os.system('mkdir -p ' + dir_parameters)
     state_dict = model.state_dict()
+
+    print('Save first layer parameters as RGB images')
 
     weight = state_dict['features.0.weight']
     for filter_id in range(weight.size(0)):
-        path_param = 'output/parameters/features.0.weight_filter{}.png'.format(filter_id)
-        print('save '+path_param)
+        path_param = os.path.join(dir_parameters, 'features.0.weight_filter{}.png'.format(filter_id))
+        print('save ' + path_param)
         torchvision.utils.save_image(weight[filter_id], path_param)
+
+    print('')
+
+
+    print('Save other layer parameters as Gray images')
 
     for key in state_dict:
         if 'features' in key and 'weight' in key:
             for filter_id in range(3):
                 for channel_id in range(3):
-                    path_param = 'output/parameters/{}_filter{}_channel{}.png'.format(key, filter_id, channel_id)
+                    path_param = os.path.join(dir_parameters, '{}_filter{}_channel{}.png'.format(key, filter_id, channel_id))
+                    print('save ' + path_param)
                     torchvision.utils.save_image(state_dict[key][filter_id][channel_id], path_param)
 
     print('')

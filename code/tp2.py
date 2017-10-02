@@ -10,6 +10,7 @@ import torchvision
 import torchvision.models as models
 import torchvision.transforms as transforms
 
+# http://scikit-learn.org
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import average_precision_score
 from sklearn.svm import LinearSVC
@@ -18,8 +19,7 @@ from sklearn.svm import SVC
 from lib.voc import Voc2007Classification
 from lib.util import load_imagenet_classes
 from tp1 import model_urls
-from lib.vggm import VGGM
-models.__dict__['vggm'] = VGGM
+
 
 def extract_features_targets(dir_datasets, split, batch_size, path_data, layer_id):
     if os.path.isfile(path_data):
@@ -55,18 +55,18 @@ def extract_features_targets(dir_datasets, split, batch_size, path_data, layer_i
     handle.remove()
 
     os.system('mkdir -p {}'.format(os.path.dirname(path_data)))
-    print('save '+path_data)
+    print('save ' + path_data)
     torch.save((features, targets), path_data)
     print('')
     return features, targets
 
-def train_multilabel(features, targets, train_split, test_split, C=1.0, ignore_hard_examples=True, after_ReLU=True, normalize_L2=True):
+def train_multilabel(features, targets, nb_classes, train_split, test_split, C=1.0, ignore_hard_examples=True, after_ReLU=True, normalize_L2=True):
     print('Hyperparameters:\n - C: {}\n - after_ReLU: {}\n - normL2: {}'.format(C, after_ReLU, normalize_L2))
     train_APs = []
     test_APs = []
     for class_id in range(nb_classes):
-        # http://scikit-learn.org/stable/modules/generated/sklearn.svm.SVC.html
-        classifier = SVC(C=C, kernel='linear')
+        
+        classifier = SVC(C=C, kernel='linear') # http://scikit-learn.org/stable/modules/generated/sklearn.svm.SVC.html
         
         if ignore_hard_examples:
             train_masks = (targets[train_split][:,class_id] != 0).view(-1, 1)
@@ -97,7 +97,7 @@ def train_multilabel(features, targets, train_split, test_split, C=1.0, ignore_h
         test_X = test_features.numpy()
         test_y = (test_targets[:,class_id] != -1).numpy()
 
-        classifier.fit(train_X, train_y)
+        classifier.fit(train_X, train_y) # train parameters of the classifier
 
         train_preds = classifier.predict(train_X)
         train_acc = accuracy_score(train_y, train_preds) * 100
@@ -125,68 +125,41 @@ def train_multilabel(features, targets, train_split, test_split, C=1.0, ignore_h
 parser = argparse.ArgumentParser(
     description='Train/Evaluate models',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--dir_outputs', default='/tmp/output', type=str, 
-                    help='')
-parser.add_argument('--dir_models', default='/tmp/torch/models', type=str, 
-                    help='')
-parser.add_argument('--dir_datasets', default='/tmp/torch/datasets', type=str, 
-                    help='')
-parser.add_argument('--C', default=1, type=float,
-                    help='')
+parser.add_argument('--dir_outputs', default='/tmp/output', type=str, help='')
+parser.add_argument('--dir_models', default='/tmp/torch/models', type=str, help='')
+parser.add_argument('--dir_datasets', default='/tmp/torch/datasets', type=str, help='')
+parser.add_argument('--C', default=1, type=float, help='')
+parser.add_argument('--model_name', default='alexnet', type=str, help='')
+parser.add_argument('--layer_id', default=4, type=int, help='')
+parser.add_argument('--train_split', default='train', type=str, help='')
+parser.add_argument('--test_split', default='val', type=str, help='')
 
 if __name__ == '__main__':
     global args
     args = parser.parse_args()
 
     print('Create network')
-    model_name = 'vggm'
-    layer_id = 3
-    model = models.__dict__[model_name]()
+    model = models.__dict__[args.model_name]()
     model.eval()
     print(model)
     print('')
 
     print('Load pretrained model on Imagenet')
-    model.load_state_dict(model_zoo.load_url(model_urls[model_name],
+    model.load_state_dict(model_zoo.load_url(model_urls[args.model_name],
                                    model_dir=args.dir_models))
-
-    class ToSpaceBGR(object):
-
-        def __init__(self, is_bgr):
-            self.is_bgr = is_bgr
-
-        def __call__(self, tensor):
-            if self.is_bgr:
-                new_tensor = tensor.clone()
-                new_tensor[0] = tensor[2]
-                new_tensor[2] = tensor[0]
-                tensor = new_tensor
-            return tensor
-
-    class ToRange255(object):
-
-        def __init__(self, is_255):
-            self.is_255 = is_255
-
-        def __call__(self, tensor):
-            if self.is_255:
-                tensor.mul_(255)
-            return tensor
 
     tf = transforms.Compose([
         transforms.Scale(224),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
-        ToSpaceBGR(True),
-        ToRange255(True),
         transforms.Normalize(
-            mean=[123.68, 116.779, 103.939],#[0.485, 0.456, 0.406],
-            std=[1,1,1],#[0.229, 0.224, 0.225]
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
         )
     ])
     print('')
 
-    dir_data = os.path.join(args.dir_outputs, 'data/{}_{}'.format(model_name, layer_id))
+    dir_data = os.path.join(args.dir_outputs, 'data/{}_{}'.format(args.model_name, args.layer_id))
     path_train_data = '{}/{}set.pth'.format(dir_data, 'train')
     path_val_data = '{}/{}set.pth'.format(dir_data, 'val')
     path_test_data = '{}/{}set.pth'.format(dir_data, 'test')
@@ -194,9 +167,9 @@ if __name__ == '__main__':
     features = {}
     targets = {}
     batch_size = 100
-    features['train'], targets['train'] = extract_features_targets(args.dir_datasets, 'train', batch_size, path_train_data, layer_id)
-    features['val'], targets['val'] = extract_features_targets(args.dir_datasets, 'val', batch_size, path_val_data, layer_id)
-    features['test'], targets['test'] = extract_features_targets(args.dir_datasets, 'test', batch_size, path_test_data, layer_id)
+    features['train'], targets['train'] = extract_features_targets(args.dir_datasets, 'train', batch_size, path_train_data, args.layer_id)
+    features['val'], targets['val'] = extract_features_targets(args.dir_datasets, 'val', batch_size, path_val_data, args.layer_id)
+    features['test'], targets['test'] = extract_features_targets(args.dir_datasets, 'test', batch_size, path_test_data, args.layer_id)
     features['trainval'] = torch.cat([features['train'], features['val']], 0)
     targets['trainval'] = torch.cat([targets['train'], targets['val']], 0)
 
@@ -204,15 +177,14 @@ if __name__ == '__main__':
 
     ##########################################################################
 
-    print('Hyperparameters search: train multilabel classifiers (on-versus-all) on train/val')
-
-    dataset = Voc2007Classification(args.dir_datasets, 'train')
+    dataset = Voc2007Classification(args.dir_datasets, args.train_split)
     nb_classes = len(dataset.classes) # Voc2007
 
-    #train_multilabel(features, targets, 'train', 'val', C=args.C)
+    if args.train_split == 'train' and args.test_split == 'val':
+        print('Hyperparameters search: train multilabel classifiers (on-versus-all) on train/val')
+    elif args.train_split == 'trainval' and args.test_split == 'test':
+        print('Evaluation: train a multilabel classifier on trainval/test')
+    else:
+        raise ValueError('Trying to train on {} and eval on {}'.format(args.train_split, args.test_split))
 
-    ##########################################################################
-
-    print('Evaluation: train a multilabel classifier on trainval/test')
-
-    train_multilabel(features, targets, 'trainval', 'test', C=args.C)
+    train_multilabel(features, targets, nb_classes, args.train_split, args.test_split, C=args.C)
