@@ -18,7 +18,7 @@ from sklearn.svm import SVC
 
 from lib.voc import Voc2007Classification
 from lib.util import load_imagenet_classes
-from tp1 import model_urls
+from visu import model_urls
 
 
 def extract_features_targets(dir_datasets, split, batch_size, path_data, layer_id):
