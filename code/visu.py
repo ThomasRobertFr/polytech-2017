@@ -31,11 +31,13 @@ model_urls = {
     # Resnet
     # Paper: https://arxiv.org/abs/1512.03385
     # https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
-    'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth'
+    'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
+    'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
+    'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth'
 }
 
-dir_datasets = '/tmp/torch/datasets' # '/home/sasl/shared/EI-SE5-CS/datasets'
-dir_models = '/tmp/torch/models' # '/home/sasl/shared/EI-SE5-CS/models'
+dir_datasets = '/home/sasl/shared/EI-SE5-CS/datasets' # '/tmp/torch/datasets'
+dir_models = '/home/sasl/shared/EI-SE5-CS/models' # '/tmp/torch/models'
 dir_outputs = '/tmp/outputs'
 
 if __name__ == '__main__':
