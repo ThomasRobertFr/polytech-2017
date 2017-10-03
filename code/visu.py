@@ -36,14 +36,15 @@ model_urls = {
     'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth'
 }
 
-dir_datasets = '/home/sasl/shared/EI-SE5-CS/datasets' # '/tmp/torch/datasets'
-dir_models = '/home/sasl/shared/EI-SE5-CS/models' # '/tmp/torch/models'
-dir_outputs = '/tmp/outputs'
-
 if __name__ == '__main__':
-    
-    print('Create network')
+
     model_name = 'alexnet'
+
+    dir_datasets = '/home/sasl/shared/EI-SE5-CS/datasets' # '/tmp/torch/datasets'
+    dir_models = '/home/sasl/shared/EI-SE5-CS/models' # '/tmp/torch/models'
+    dir_outputs = '/tmp/outputs/' + model_name
+
+    print('Create network')
     model = models.__dict__[model_name]() # https://stackoverflow.com/questions/19907442/python-explain-dict-attribute
     model.eval() # http://pytorch.org/docs/master/nn.html?highlight=eval#torch.nn.Module.eval
     print('')
