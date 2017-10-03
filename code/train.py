@@ -87,9 +87,9 @@ def train_multilabel(features, targets, nb_classes, train_split, test_split, C=1
 
         if normalize_L2:
             train_norm = torch.norm(train_features, p=2, dim=1)
-            train_features = train_features.div(train_norm.unsqueeze(1).expand_as(train_features))
+            train_features = train_features.div(train_norm.expand_as(train_features))
             test_norm = torch.norm(test_features, p=2, dim=1)
-            test_features = test_features.div(test_norm.unsqueeze(1).expand_as(test_features))
+            test_features = test_features.div(test_norm.expand_as(test_features))
 
         train_X = train_features.numpy()
         train_y = (train_targets[:,class_id] != -1).numpy() # uses hard examples if not ignored
