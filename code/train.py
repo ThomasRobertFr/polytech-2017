@@ -126,8 +126,8 @@ parser = argparse.ArgumentParser(
     description='Train/Evaluate models',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--dir_outputs', default='/tmp/output', type=str, help='')
-parser.add_argument('--dir_models', default='/tmp/torch/models', type=str, help='')
-parser.add_argument('--dir_datasets', default='/tmp/torch/datasets', type=str, help='')
+parser.add_argument('--dir_models', default='/home/sasl/shared/EI-SE5-CS/models', type=str, help='')
+parser.add_argument('--dir_datasets', default='/home/sasl/shared/EI-SE5-CS/datasets', type=str, help='')
 parser.add_argument('--C', default=1, type=float, help='')
 parser.add_argument('--model_name', default='alexnet', type=str, help='')
 parser.add_argument('--layer_id', default=4, type=int, help='')
