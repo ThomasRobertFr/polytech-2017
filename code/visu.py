@@ -54,6 +54,9 @@ if __name__ == '__main__':
     print('Display modules')
     print(model)
     print('')
+    
+    # Start debugger, move / remove this line to run the rest of the file
+    ipdb; ipdb.set_trace()
 
     ##########################################################################
 
