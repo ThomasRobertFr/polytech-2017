@@ -56,7 +56,7 @@ if __name__ == '__main__':
     print('')
     
     # Start debugger, move / remove this line to run the rest of the file
-    ipdb; ipdb.set_trace()
+    import ipdb; ipdb.set_trace()
 
     ##########################################################################
 
