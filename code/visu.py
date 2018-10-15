@@ -113,6 +113,7 @@ if __name__ == '__main__':
 
     print('Load pretrained model on Imagenet')
     model = models.__dict__[model_name](pretrained=True)
+    model.eval()
     # model.load_state_dict(model_zoo.load_url(model_urls[model_name],
     #                               model_dir=dir_models))
 
