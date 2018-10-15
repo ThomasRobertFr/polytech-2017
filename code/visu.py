@@ -1,40 +1,29 @@
 import os
+os.environ["TORCH_MODEL_ZOO"] = "/tmp/torch" # change path to save model weights
 
 import torch # http://pytorch.org/about/
 from torch.autograd import Variable
 from torch.utils import model_zoo
 
 import torchvision # https://github.com/pytorch/vision
-import torchvision.models as models
+import  models
 import torchvision.transforms as transforms
 
 from lib.voc import Voc2007Classification
 from lib.util import load_imagenet_classes
 
-model_urls = {
-    # Alexnet
-    # Paper: https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf
-    # https://github.com/pytorch/vision/blob/master/torchvision/models/alexnet.py
-    'alexnet': 'https://download.pytorch.org/models/alexnet-owt-4df8aa71.pth',
-    # VGG
-    # Paper: https://arxiv.org/abs/1409.1556
-    # https://github.com/pytorch/vision/blob/master/torchvision/models/vgg.py
-    'vgg16': 'https://download.pytorch.org/models/vgg16-397923af.pth',
-    # VGG BatchNorm
-    # Paper: https://arxiv.org/abs/1502.03167
-    # https://github.com/pytorch/vision/blob/master/torchvision/models/vgg.py
-    'vgg16_bn': 'https://download.pytorch.org/models/vgg16_bn-6c64b313.pth',
-    # Inception
-    # Paper: https://arxiv.org/abs/1602.07261
-    # https://github.com/pytorch/vision/blob/master/torchvision/models/inception.py
-    'inception_v3': 'https://download.pytorch.org/models/inception_v3_google-1a9a5a14.pth',
-    # Resnet
-    # Paper: https://arxiv.org/abs/1512.03385
-    # https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
-    'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
-    'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
-    'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth'
-}
+# Example of models: alexnet, vgg16, inception_v3, resnet18, resnet50, ...
+# Alexnet
+# Paper: https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf
+# VGG
+# Paper: https://arxiv.org/abs/1409.1556
+# VGG BatchNorm
+# Paper: https://arxiv.org/abs/1502.03167
+# Inception
+# Paper: https://arxiv.org/abs/1602.07261
+# Resnet
+# Paper: https://arxiv.org/abs/1512.03385
+
 
 if __name__ == '__main__':
 
@@ -123,8 +112,9 @@ if __name__ == '__main__':
     ##########################################################################
 
     print('Load pretrained model on Imagenet')
-    model.load_state_dict(model_zoo.load_url(model_urls[model_name],
-                                   model_dir=dir_models))
+    model = models.__dict__[model_name](pretrained=True)
+    # model.load_state_dict(model_zoo.load_url(model_urls[model_name],
+    #                               model_dir=dir_models))
 
     print('Display predictions')
 
