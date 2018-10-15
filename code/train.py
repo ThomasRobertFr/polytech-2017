@@ -1,4 +1,6 @@
 import os
+os.environ["TORCH_MODEL_ZOO"] = "/tmp/torch" # change path to save model weights
+
 import argparse
 from tqdm import tqdm
 
@@ -7,7 +9,7 @@ from torch.autograd import Variable
 from torch.utils import model_zoo
 
 import torchvision
-import torchvision.models as models
+import models
 import torchvision.transforms as transforms
 
 # http://scikit-learn.org
@@ -18,7 +20,7 @@ from sklearn.svm import SVC
 
 from lib.voc import Voc2007Classification
 from lib.util import load_imagenet_classes
-from visu import model_urls
+#from visu import model_urls
 
 
 def extract_features_targets(dir_datasets, split, batch_size, path_data, layer_id):
@@ -139,14 +141,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     print('Create network')
-    model = models.__dict__[args.model_name]()
+    model = models.__dict__[args.model_name](pretrained=True)
     model.eval()
     print(model)
     print('')
 
     print('Load pretrained model on Imagenet')
-    model.load_state_dict(model_zoo.load_url(model_urls[args.model_name],
-                                   model_dir=args.dir_models))
+    #model.load_state_dict(model_zoo.load_url(model_urls[args.model_name],
+                                  # model_dir=args.dir_models))
 
     tf = transforms.Compose([
         transforms.Scale(224),
